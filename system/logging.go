@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+var saptuneLogDir = "/varlog/saptune"
 var infoLogger *log.Logger    // Info logger
 var noticeLogger *log.Logger  // Notice logger
 var debugLogger *log.Logger   // Debug logger
@@ -64,6 +65,7 @@ func WarningLog(txt string, stuff ...interface{}) {
 func ErrLog(txt string, stuff ...interface{}) {
 	if errorLogger != nil {
 		errorLogger.Printf(CalledFrom()+txt+"\n", stuff...)
+		jWriteMsg("ERROR", fmt.Sprintf(CalledFrom()+txt+"\n", stuff...))
 	}
 }
 
@@ -86,10 +88,15 @@ func LogInit(logFile string, logSwitch map[string]string) {
 	//define log format
 	logTimeFormat := time.Now().Format("2006-01-02 15:04:05.000 ")
 
+	if _, err := os.Stat(saptuneLogDir); err != nil {
+		if err = os.MkdirAll(saptuneLogDir, 0755); err != nil {
+			ErrorExit("", err)
+		}
+	}
 	//create log file with desired read/write permissions
 	saptuneLog, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
 	if err != nil {
-		panic(err.Error())
+		ErrorExit("", err)
 	}
 
 	//saptuneWriter := io.MultiWriter(os.Stderr, saptuneLog)

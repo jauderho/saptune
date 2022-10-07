@@ -17,6 +17,7 @@ const (
 	TunedService       = "tuned.service"
 	exitSaptuneStopped = 1
 	exitNotTuned       = 3
+	exitNotCompliant   = 4
 )
 
 // PackageArea is the package area with all notes and solutions shipped by
@@ -74,7 +75,7 @@ var dfltColorScheme = "full-red-noncmpl"
 
 // SelectAction selects the chosen action depending on the first command line
 // argument
-func SelectAction(stApp *app.App, saptuneVers string) {
+func SelectAction(writer io.Writer, stApp *app.App, saptuneVers string) {
 	// switch off color and highlighting, if Stdout is not a terminal
 	switchOffColor()
 	system.JnotSupportedYet()
@@ -86,21 +87,21 @@ func SelectAction(stApp *app.App, saptuneVers string) {
 
 	switch system.CliArg(1) {
 	case "daemon":
-		DaemonAction(os.Stdout, system.CliArg(2), saptuneVers, stApp)
+		DaemonAction(writer, system.CliArg(2), saptuneVers, stApp)
 	case "service":
-		ServiceAction(system.CliArg(2), saptuneVers, stApp)
+		ServiceAction(writer, system.CliArg(2), saptuneVers, stApp)
 	case "note":
-		NoteAction(system.CliArg(2), system.CliArg(3), system.CliArg(4), stApp)
+		NoteAction(writer, system.CliArg(2), system.CliArg(3), system.CliArg(4), stApp)
 	case "solution":
-		SolutionAction(system.CliArg(2), system.CliArg(3), system.CliArg(4), stApp)
+		SolutionAction(writer, system.CliArg(2), system.CliArg(3), system.CliArg(4), stApp)
 	case "revert":
-		RevertAction(os.Stdout, system.CliArg(2), stApp)
+		RevertAction(writer, system.CliArg(2), stApp)
 	case "staging":
 		StagingAction(system.CliArg(2), system.CliArgs(3), stApp)
 	case "status":
-		ServiceAction("status", saptuneVers, stApp)
+		ServiceAction(writer, "status", saptuneVers, stApp)
 	default:
-		PrintHelpAndExit(os.Stdout, 1)
+		PrintHelpAndExit(writer, 1)
 	}
 }
 
@@ -139,6 +140,7 @@ func rememberMessage(writer io.Writer) {
 
 // VerifyAllParameters Verify that all system parameters do not deviate from any of the enabled solutions/notes.
 func VerifyAllParameters(writer io.Writer, tuneApp *app.App) {
+	result := system.JPNotes{}
 	if len(tuneApp.NoteApplyOrder) == 0 {
 		fmt.Fprintf(writer, "No notes or solutions enabled, nothing to verify.\n")
 	} else {
@@ -146,8 +148,12 @@ func VerifyAllParameters(writer io.Writer, tuneApp *app.App) {
 		if err != nil {
 			system.ErrorExit("Failed to inspect the current system: %v", err)
 		}
-		PrintNoteFields(writer, "NONE", comparisons, true)
+		PrintNoteFields(writer, "NONE", comparisons, true, &result)
 		tuneApp.PrintNoteApplyOrder(writer)
+		result.NotesOrder = tuneApp.NoteApplyOrder
+		sysComp := len(unsatisfiedNotes) == 0
+		result.SysCompliance = &sysComp
+		system.Jcollect(result)
 		if len(unsatisfiedNotes) == 0 {
 			fmt.Fprintf(writer, "%s%sThe running system is currently well-tuned according to all of the enabled notes.%s%s\n", setGreenText, setBoldText, resetBoldText, resetTextColor)
 		} else {
@@ -268,8 +274,10 @@ func PrintHelpAndExit(writer io.Writer, exitStatus int) {
 	}
 	fmt.Fprintln(writer, `saptune: Comprehensive system optimisation management for SAP solutions.
 Daemon control:
-  saptune daemon [ start | status | stop ]  ATTENTION: deprecated
-  saptune service [ start | status | stop | restart | takeover | enable | disable | enablestart | disablestop ]
+  saptune daemon [ start | stop ]                 ATTENTION: deprecated
+  saptune daemon status [--non-compliance-check]  ATTENTION: deprecated
+  saptune service [ start | stop | restart | takeover | enable | disable | enablestart | disablestop ]
+  saptune service status [--non-compliance-check]
 Tune system according to SAP and SUSE notes:
   saptune note [ list | revertall | enabled | applied ]
   saptune note [ apply | simulate | customise | create | edit | revert | show | delete ] NoteID
@@ -290,7 +298,7 @@ Remove the pending lock file from a former saptune call
 Call external script '/usr/sbin/saptune_check'
   saptune check
 Print current saptune status:
-  saptune status
+  saptune status [--non-compliance-check]
 Print current saptune version:
   saptune version
 Print this message:
